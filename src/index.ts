@@ -1,160 +1,158 @@
 import * as tokenizer from 'sbd';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 
+interface SbdSplitterOptions {
+    chunkSize?: number;
+    keepSeparator?: boolean;
+    delimiters?: string[];
+    sbd_marker?: string;
+    softMaxChunkSize?: number;
+    sbd_options?: tokenizer.Options;
+}
 export class SbdSplitter extends RecursiveCharacterTextSplitter {
-    constructor(options) {
-        super({
-            chunkSize: 1000, // Absolute max chunk size
-            keepSeparator: true,
-            delimeters: ['.', '?', '!'],
-            ...options
-        });
-        this.sbd_marker = options.sbd_marker || '&#&#&#';
-        this.softMaxChunkSize = options.softMaxChunkSize || 800;
-        this.delimeters = [this.sbd_marker, ' ',''];
-        this.sbd_options = {
-            newline_boundaries: false,
-            html_boundaries: false,
-            sanitize: false,
-            allowed_tags: false,
-            preserve_whitespace: true,
-            abbreviations: null,
-            ...options.sbd_options
-        };
-    }
+  private sbd_marker: string;
+  private softMaxChunkSize: number;
+  private sbd_options: tokenizer.Options;
+  private delimiters: string[];
 
-    /**
+  constructor (options: SbdSplitterOptions) {
+    super({
+      chunkSize: 1000, // Absolute max chunk size
+      keepSeparator: true,
+      delimiters: ['.', '?', '!'],
+      ...options
+    });
+    this.sbd_marker = options.sbd_marker || '&#&#&#';
+    this.softMaxChunkSize = options.softMaxChunkSize || 800;
+    this.delimiters = [this.sbd_marker, ' ', ''];
+    this.sbd_options = {
+      newline_boundaries: false,
+      html_boundaries: false,
+      sanitize: false,
+      allowed_tags: false,
+      preserve_whitespace: true,
+      abbreviations: undefined,
+      ...options.sbd_options
+    };
+  }
+
+  /**
      * Splits the input text into sentences using the tokenizer and then processes the text to split it further.
-     * @param {string} text - The input text to be split.
-     * @param {object} options - Additional options for splitting.
-     * @returns {Promise<string[]>} - An array of split text chunks.
+     * @param text - The input text to be split.
+     * @param options - Additional options for splitting.
+     * @returns An array of split text chunks.
      */
-    async splitText(text, options = {}) {
-        // Tokenize the text into sentences
-        text = tokenizer.sentences(text, this.sbd_options);
-        // Join the sentences with the sentence boundary marker
-        text = text.join(this.sbd_marker);
-        const regex = new RegExp(this.sbd_marker, 'g');
-        // Split the text further using the defined separators
-        return (await this._splitText(text, this.separators)).map(c => c.replace(regex, ''));
-    }
+  async splitText (text: string, options: object = {}): Promise<string[]> {
+    // Tokenize the text into sentences
+    text = tokenizer.sentences(text, { ...this.sbd_options, ...options }).join(this.sbd_marker);
+    const regex = new RegExp(this.sbd_marker, 'g');
+    // Split the text further using the defined separators
+    return (await this._customSplitText(text, this.separators)).map(c => c.replace(regex, ''));
+  }
 
-    /**
+  /**
      * Merges the split text chunks into larger chunks while respecting the chunkSize and softMaxChunkSize limits.
-     * @param {string[]} splits - The array of split text chunks.
-     * @param {string} separator - The separator to use when joining chunks.
-     * @returns {Promise<string[]>} - An array of merged text chunks.
+     * @param splits - The array of split text chunks.
+     * @param separator - The separator to use when joining chunks.
+     * @param max - The maximum chunk size.
+     * @returns An array of merged text chunks.
      */
-
-
-async mergeSplits(splits, separator, max) {
-    max = max || this.softMaxChunkSize
-    const docs = []; // Array to store the final merged documents
-    let currentDoc = []; // Array to store the current document being built
-    let total = 0; // Total length of the current document
+  async mergeSplits (splits: string[], separator: string, max?: number): Promise<string[]> {
+    max = max || this.softMaxChunkSize;
+    const docs: string[] = [];
+    let currentDoc: string[] = [];
+    let total = 0;
 
     for (const d of splits) {
-        const _len = await this.lengthFunction(d); // Length of the current split
+      const _len = await this.lengthFunction(d);
 
-        // Check if adding the current split would exceed the chunk size
-        // allows one additional chunk past the softMax but not pas the chunkSize
-        if (total >  max || total + _len > this.chunkSize) { 
-
-            // If the current document has content, join and add it to the docs array
-            if (currentDoc.length > 0) {
-                const doc = this.joinDocs(currentDoc, separator);
-                if (doc !== null) {
-                    docs.push(doc);
-                    currentDoc = []; // Reset the current document
-                    total = 0;
-                }
-            }
+      if (total > max || total + _len > this.chunkSize) {
+        if (currentDoc.length > 0) {
+          // @ts-expect-error - joinDocs is a private function
+          const doc = this.joinDocs(currentDoc, separator);
+          if (doc !== null) {
+            docs.push(doc);
+            currentDoc = [];
+            total = 0;
+          }
         }
+      }
 
-        currentDoc.push(d); // Add the current split to the current document
-        total += _len; // Update the total length of the current document
+      currentDoc.push(d);
+      total += _len;
     }
 
-    // Join and add the last document if it has content
+    // @ts-expect-error - joinDocs is a private function
     const doc = this.joinDocs(currentDoc, separator);
     if (doc !== null) {
-        docs.push(doc);
+      docs.push(doc);
     }
 
-    return docs; // Return the array of merged documents
-}
+    return docs;
+  }
 
-    /**
+  /**
      * Recursively splits the text based on the provided separators and merges the splits into chunks.
-     * @param {string} text - The input text to be split.
-     * @param {string[]} separators - The array of separators to use for splitting.
-     * @returns {Promise<string[]>} - An array of final text chunks.
+     * @param text - The input text to be split.
+     * @param separators - The array of separators to use for splitting.
+     * @returns An array of final text chunks.
      */
-    async _splitText(text, separators) {
-        const finalChunks = [];
-    
-        // Get appropriate separator to use
-        let separator = separators[separators.length - 1];
-        let newSeparators;
-        for (let i = 0; i < separators.length; i += 1) {
-            const s = separators[i];
-            if (s === "") {
-                separator = s;
-                break;
-            }
-            if (text.includes(s)) {
-                separator = s;
-                newSeparators = separators.slice(i + 1);
-                break;
-            }
-        }       
-        
-        let postSBDseparators = separators.slice(separators.indexOf(this.sbd_marker)+1);
-        // Now go merging things, recursively splitting longer texts.
-        let goodSplits = [];
-        let _separator = this.keepSeparator ? "" : separator;
-        // Now that we have the separator, split the text
-        let splits = this.splitOnSeparator(text, separator);
+  async _customSplitText (text: string, separators: string[]): Promise<string[]> {
+    const finalChunks: string[] = [];
+    let separator = separators[separators.length - 1];
+    let newSeparators: string[] | undefined;
 
-
-        if(separator === this.sbd_marker) {
-            let original = this.keepSeparator
-            this.keepSeparator = false // never keep the SBD marker in splits
-            splits = this.splitOnSeparator(text, separator); 
-            this.keepSeparator = original
-            // _separator = this.sbd_marker;
-
-        }
-        
-        let max = postSBDseparators.includes(separator) ? this.chunkSize : this.softMaxChunkSize
-
-        for (const s of splits) {
-            const length = await this.lengthFunction(s);
-            // If the chunk is smaller than the softMaxChunkSize, add to goodSplits
-            if (length < max) { // the only key difference here 
-                goodSplits.push(s);
-            } else { 
-                // If there are goodSplits, merge them and add to finalChunks
-                if (goodSplits.length) {
-                    const mergedText = await this.mergeSplits(goodSplits, _separator);
-                    finalChunks.push(...mergedText);
-                    goodSplits = [];
-                }
-                // If no more separators, add the chunk to finalChunks
-                if (!newSeparators) {
-                    finalChunks.push(s);
-                // Otherwise, recursively split the chunk
-                } else {
-                    const otherInfo = await this._splitText(s, newSeparators);
-                    finalChunks.push(...otherInfo);
-                }
-            }
-        }
-        // Merge any remaining goodSplits and add to finalChunks
-        if (goodSplits.length) {
-            const mergedText = await this.mergeSplits(goodSplits, _separator, max);
-            finalChunks.push(...mergedText);
-        }
-        return finalChunks;
+    for (let i = 0; i < separators.length; i += 1) {
+      const s = separators[i];
+      if (s === '') {
+        separator = s;
+        break;
+      }
+      if (text.includes(s)) {
+        separator = s;
+        newSeparators = separators.slice(i + 1);
+        break;
+      }
     }
+
+    const postSBDseparators = separators.slice(separators.indexOf(this.sbd_marker) + 1);
+    let goodSplits: string[] = [];
+    const _separator = this.keepSeparator ? '' : separator;
+    let splits = this.splitOnSeparator(text, separator);
+
+    if (separator === this.sbd_marker) {
+      const original = this.keepSeparator;
+      this.keepSeparator = false;
+      splits = this.splitOnSeparator(text, separator);
+      this.keepSeparator = original;
+    }
+
+    const max = postSBDseparators.includes(separator) ? this.chunkSize : this.softMaxChunkSize;
+
+    for (const s of splits) {
+      const length = await this.lengthFunction(s);
+      if (length < max) {
+        goodSplits.push(s);
+      } else {
+        if (goodSplits.length) {
+          const mergedText = await this.mergeSplits(goodSplits, _separator);
+          finalChunks.push(...mergedText);
+          goodSplits = [];
+        }
+        if (!newSeparators) {
+          finalChunks.push(s);
+        } else {
+          const otherInfo = await this._customSplitText(s, newSeparators);
+          finalChunks.push(...otherInfo);
+        }
+      }
+    }
+
+    if (goodSplits.length) {
+      const mergedText = await this.mergeSplits(goodSplits, _separator, max);
+      finalChunks.push(...mergedText);
+    }
+
+    return finalChunks;
+  }
 }

@@ -9,15 +9,19 @@
     "test": "test"
   },
   "dependencies": {
-    "@types/feathersjs__feathers": "^3.1.14"
+    "langchain": "^0.2.2",
+    "sbd": "^1.0.19"
   },
   "devDependencies": {
     "@babel/cli": "^7.21.5",
     "@babel/core": "^7.21.5",
     "@babel/preset-env": "^7.21.5",
+    "@babel/preset-typescript": "^7.24.6",
     "@babel/register": "^7.21.0",
     "@release-it/conventional-changelog": "^8.0.1",
+    "@types/sbd": "^1.0.5",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "chai": "^5.1.1",
     "conventional-changelog-angular": "^7.0.0",
     "eslint": "^8.39.0",
     "eslint-config-standard": "^17.1.0",
@@ -26,6 +30,7 @@
     "release-it": "^17.0.1",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
+    
   },
   "engines": {
     "node": ">=18.0.0"
@@ -33,7 +38,7 @@
   "scripts": {
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
-    "build": "babel src -d lib",
+    "build": "babel src -d lib --extensions \".ts,.js\"",
     "test": "printf '\\33c\\e[3J' && npm run lint; node --import tsx --test ./test/**/*.test.ts",
     "test:dev": "echo '\\033c' && npm run lint; node --import tsx --watch --test ./test/**/*.test.ts",
     "coverage": "nyc npm test",
@@ -44,9 +49,11 @@
     "url": "git+https://github.com/jamesvillarrubia/sbd-splitter.git"
   },
   "keywords": [
-    "madi",
-    "semantic scholar",
-    "search"
+    "sbd",
+    "langchain",
+    "splitter",
+    "markdown",
+    "rag"
   ],
   "author": {
     "name": "James Villarrubia",
